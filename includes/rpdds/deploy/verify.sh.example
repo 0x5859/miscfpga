@@ -1,0 +1,102 @@
+#!/bin/bash
+# Post-install sanity check for the Red Pitaya DDS AXI DMA deployment.
+# Reports:
+#   - PL state (fpga_manager)
+#   - DDS identity/config registers at 0x40200000
+#   - rp-dds-axi-dma.service active state
+#   - /api/status HTTP response
+# Exits 0 when everything matches, 1 on any mismatch.
+
+set -uo pipefail
+
+APP_NAME="${APP_NAME:-dds_axi_dma_workbench}"
+MONITOR="/opt/redpitaya/bin/monitor"
+FPGA_STATE_PATH="/sys/class/fpga_manager/fpga0/state"
+SERVICE_NAME="rp-dds-axi-dma.service"
+API_URL="http://127.0.0.1:18888/api/status"
+
+if ! command -v "${MONITOR}" >/dev/null 2>&1; then
+    echo "ERROR: ${MONITOR} not found" >&2
+    exit 2
+fi
+HAS_CURL=1
+if ! command -v curl >/dev/null 2>&1; then
+    HAS_CURL=0
+fi
+
+fail=0
+pass=0
+
+check() {
+    local label="$1" addr="$2" expected="$3"
+    local got
+    got="$("${MONITOR}" "${addr}" 2>/dev/null | tr -d '[:space:]')"
+    got="${got,,}"
+    local exp="${expected,,}"
+    if [ "${got}" = "${exp}" ]; then
+        printf '  [ OK ]  %-14s @ %s = %s\n' "${label}" "${addr}" "${got}"
+        pass=$((pass + 1))
+    else
+        printf '  [FAIL]  %-14s @ %s = %s (expected %s)\n' "${label}" "${addr}" "${got:-<empty>}" "${exp}"
+        fail=$((fail + 1))
+    fi
+}
+
+note() { printf '  %s\n' "$*"; }
+
+echo "=== fpga_manager state ==="
+if [ -r "${FPGA_STATE_PATH}" ]; then
+    state="$(cat "${FPGA_STATE_PATH}")"
+    if [ "${state}" = "operating" ]; then
+        note "[ OK ]  ${FPGA_STATE_PATH} = ${state}"
+        pass=$((pass + 1))
+    else
+        note "[FAIL]  ${FPGA_STATE_PATH} = ${state} (expected operating)"
+        fail=$((fail + 1))
+    fi
+else
+    note "[FAIL]  ${FPGA_STATE_PATH} not readable"
+    fail=$((fail + 1))
+fi
+
+echo
+echo "=== DDS registers ==="
+check "ID"          0x40200000 0x44445332
+check "VERSION"     0x40200004 0x00010000
+check "SAMPLE_RATE" 0x40200010 0x07735940
+check "LUT_LENGTH"  0x40200014 0x00004000
+check "FEATURES"    0x40200018 0x00000007
+check "CHA_AMP"     0x40200114 0x00007fff
+
+echo
+echo "=== Backend service ==="
+if systemctl is-active --quiet "${SERVICE_NAME}"; then
+    note "[ OK ]  ${SERVICE_NAME} is active"
+    pass=$((pass + 1))
+else
+    note "[FAIL]  ${SERVICE_NAME} not active"
+    fail=$((fail + 1))
+fi
+
+echo
+echo "=== HTTP /api/status ==="
+if [ "${HAS_CURL}" -eq 1 ]; then
+    http_body="$(curl --max-time 3 -s -o - -w '\nHTTP_STATUS:%{http_code}' "${API_URL}" 2>/dev/null || true)"
+    http_code="${http_body##*HTTP_STATUS:}"
+    if [ "${http_code}" = "200" ]; then
+        note "[ OK ]  ${API_URL} -> 200"
+        pass=$((pass + 1))
+    else
+        note "[FAIL]  ${API_URL} -> ${http_code:-no response}"
+        fail=$((fail + 1))
+    fi
+else
+    note "[SKIP]  curl not installed; skipping HTTP probe"
+fi
+
+echo
+printf 'Summary: %d passed, %d failed\n' "${pass}" "${fail}"
+if [ "${fail}" -gt 0 ]; then
+    exit 1
+fi
+exit 0

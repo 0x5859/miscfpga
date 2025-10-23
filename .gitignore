@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Claude Code / AI tooling (local only)
+.claude/
+.codex/
+.cursor/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor
+*.swp
+*~

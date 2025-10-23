@@ -1,0 +1,16 @@
+[Unit]
+Description=Red Pitaya DDS AXI DMA backend service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/redpitaya/www/apps/dds_axi_dma_workbench/backend
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/redpitaya/www/apps/dds_axi_dma_workbench/backend
+ExecStart=/usr/bin/env python3 /opt/redpitaya/www/apps/dds_axi_dma_workbench/backend/dds_service.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

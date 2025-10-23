@@ -1,0 +1,172 @@
+#!/bin/bash
+# Split-step installer for the Red Pitaya DDS AXI DMA project.
+#
+# Why this exists: running the monolithic deploy/install.sh in one long
+# bash invocation empirically correlated with the board hard-rebooting
+# mid-install on this image (observed 2026-04-23 on rp-f0d653; dmesg
+# showed ext4 recovery on the next boot, meaning it was not a clean
+# shutdown). Running the same operations split across separate short
+# SSH sessions completed cleanly. Root cause unidentified; workaround
+# is to pace the install.
+#
+# Usage on DEV machine (not on-board):
+#   # First SSH session: put the files in place (steps 1-4)
+#   plink -batch ... root@rp-f0d653.local "bash /root/dds_deploy_stage/deploy/install_split.sh.example files"
+#   # Second session: install systemd unit (step 5)
+#   plink -batch ... root@rp-f0d653.local "bash /root/dds_deploy_stage/deploy/install_split.sh.example systemd"
+#   # Third session: copy bit/dtbo + load + start (steps 6-8)
+#   plink -batch ... root@rp-f0d653.local "bash /root/dds_deploy_stage/deploy/install_split.sh.example fpga"
+#
+# Each phase is idempotent and short-lived - re-run any phase safely.
+
+set -euo pipefail
+
+PHASE="${1:-}"
+if [[ -z "${PHASE}" ]]; then
+  echo "Usage: $0 {files|systemd|fpga|all}" >&2
+  exit 2
+fi
+
+APP_NAME="${APP_NAME:-dds_axi_dma_workbench}"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WEB_ROOT="/opt/redpitaya/www/apps/${APP_NAME}"
+BACKEND_ROOT="${WEB_ROOT}/backend"
+MODEL="$("/opt/redpitaya/bin/monitor" -f)"
+PROJECT_ROOT="/opt/redpitaya/fpga/${MODEL}/${APP_NAME}"
+SYSTEMD_UNIT="/etc/systemd/system/rp-dds-axi-dma.service"
+LEGACY_OVERLAY_UNIT="/etc/systemd/system/rp-dds-axi-dma-overlay.service"
+
+remount_opt_rw() {
+  if mountpoint -q /opt/redpitaya; then
+    mount -o remount,rw /opt/redpitaya 2>/dev/null || true
+  fi
+}
+
+phase_files() {
+  remount_opt_rw
+  echo "[files/1] preparing dirs"
+  mkdir -p "${WEB_ROOT}" "${BACKEND_ROOT}" "${PROJECT_ROOT}"
+  sync
+
+  echo "[files/2] frontend assets"
+  cp -f "${SRC_DIR}/web/index.html"            "${WEB_ROOT}/index.html"
+  cp -f "${SRC_DIR}/web/app.js"                "${WEB_ROOT}/app.js"
+  cp -f "${SRC_DIR}/web/glow-tube-display.js"  "${WEB_ROOT}/glow-tube-display.js"
+  cat > "${WEB_ROOT}/nginx.conf" <<EOF
+location /${APP_NAME}/api/ {
+    rewrite ^/${APP_NAME}/api/(.*)$ /api/\$1 break;
+    proxy_pass http://127.0.0.1:18888;
+    proxy_http_version 1.1;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+}
+location = /${APP_NAME} {
+    return 302 /${APP_NAME}/index.html;
+}
+EOF
+  sync
+
+  echo "[files/3] backend *.py"
+  python3 -m py_compile "${SRC_DIR}"/ps/*.py
+  find "${BACKEND_ROOT}" -maxdepth 1 -type f \( -name '*.py' -o -name '*.pyc' \) -delete 2>/dev/null || true
+  rm -rf "${BACKEND_ROOT}/__pycache__" 2>/dev/null || true
+  find "${WEB_ROOT}" -maxdepth 1 -type d -name 'backend.staging.*' -exec rm -rf {} + 2>/dev/null || true
+  rm -rf "${WEB_ROOT}/backend.prev" 2>/dev/null || true
+  sync
+  cp -f "${SRC_DIR}"/ps/*.py "${BACKEND_ROOT}/"
+  find "${BACKEND_ROOT}" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  sync
+
+  echo "[files/4] helper scripts"
+  cp -f "${SRC_DIR}/deploy/dds_dma_reserved_mem.dts.template" "${PROJECT_ROOT}/dds_dma_reserved_mem.dts.template"
+  cp -f "${SRC_DIR}/deploy/load_overlay.sh.example"           "${PROJECT_ROOT}/load_overlay.sh"
+  chmod +x "${PROJECT_ROOT}/load_overlay.sh"
+  cp -f "${SRC_DIR}/deploy/verify.sh.example"                 "${PROJECT_ROOT}/verify.sh"
+  chmod +x "${PROJECT_ROOT}/verify.sh"
+  sync
+  echo "files phase done"
+}
+
+phase_systemd() {
+  remount_opt_rw
+  # Clean up legacy boot-persistence overlay unit from earlier installs.
+  if [[ -f "${LEGACY_OVERLAY_UNIT}" ]] \
+     || systemctl list-unit-files --no-legend 2>/dev/null | grep -q '^rp-dds-axi-dma-overlay\.service'; then
+    echo "[systemd/0] removing legacy rp-dds-axi-dma-overlay.service"
+    systemctl stop rp-dds-axi-dma-overlay.service 2>/dev/null || true
+    systemctl disable rp-dds-axi-dma-overlay.service 2>/dev/null || true
+    rm -f "${LEGACY_OVERLAY_UNIT}"
+    systemctl daemon-reload
+  fi
+
+  echo "[systemd/1] writing ${SYSTEMD_UNIT}"
+  cat > "${SYSTEMD_UNIT}" <<EOF
+[Unit]
+Description=Red Pitaya DDS AXI DMA backend service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${BACKEND_ROOT}
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=${BACKEND_ROOT}
+ExecStart=/usr/bin/env python3 ${BACKEND_ROOT}/dds_service.py
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  sync
+
+  echo "[systemd/2] daemon-reload + enable"
+  systemctl daemon-reload
+  systemctl enable rp-dds-axi-dma.service
+  echo "systemd phase done"
+}
+
+phase_fpga() {
+  remount_opt_rw
+  local bit_ok=0 dtbo_ok=0
+  if [[ -f "${SRC_DIR}/build/fpga.bit.bin" ]]; then
+    echo "[fpga/1] copy fpga.bit.bin"
+    cp -f "${SRC_DIR}/build/fpga.bit.bin" "${PROJECT_ROOT}/fpga.bit.bin"
+    bit_ok=1
+  fi
+  if [[ -f "${SRC_DIR}/build/fpga.dtbo" ]]; then
+    echo "[fpga/2] copy fpga.dtbo"
+    cp -f "${SRC_DIR}/build/fpga.dtbo" "${PROJECT_ROOT}/fpga.dtbo"
+    dtbo_ok=1
+  fi
+  sync
+
+  if [[ "${bit_ok}" -eq 1 && "${dtbo_ok}" -eq 1 ]]; then
+    echo "[fpga/3] load_overlay.sh"
+    "${PROJECT_ROOT}/load_overlay.sh"
+    echo "[fpga/4] restart backend"
+    systemctl restart rp-dds-axi-dma.service
+    echo "fpga phase done"
+  else
+    echo "ERROR: build/fpga.bit.bin and build/fpga.dtbo both required" >&2
+    exit 1
+  fi
+}
+
+case "${PHASE}" in
+  files)    phase_files ;;
+  systemd)  phase_systemd ;;
+  fpga)     phase_fpga ;;
+  all)
+    phase_files
+    phase_systemd
+    phase_fpga
+    ;;
+  *)
+    echo "Unknown phase: ${PHASE}" >&2
+    exit 2
+    ;;
+esac

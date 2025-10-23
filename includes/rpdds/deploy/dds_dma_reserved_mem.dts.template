@@ -1,0 +1,37 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "xlnx,zynq-7000";
+
+    /*
+     * This is a template only.
+     * If the base device tree already contains /reserved-memory, adjust the
+     * fragment target and merge this node into the existing container instead
+     * of creating a duplicate one.
+     */
+
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            reserved-memory {
+                #address-cells = <1>;
+                #size-cells = <1>;
+                ranges;
+
+                dds_dma_buffer: dds-dma-buffer@1e000000 {
+                    no-map;
+                    reg = <0x1e000000 0x00400000>;
+                };
+            };
+
+            dds_axi_dma_meta {
+                compatible = "redpitaya,dds-axi-dma-meta";
+                dds-core-base = <0x40200000>;
+                axi-dma-base = <0x80400000>;
+                dds-dma-buffer-base = <0x1e000000>;
+                dds-dma-buffer-size = <0x00400000>;
+            };
+        };
+    };
+};

@@ -1,0 +1,59 @@
+`ifndef RP_DDS_DEFS_VH
+`define RP_DDS_DEFS_VH
+
+`define RP_DDS_PHASE_W 48
+`define RP_DDS_AMP_W   16
+`define RP_DDS_DATA_W  14
+`define RP_DDS_LUT_AW  14
+`define RP_DDS_SINE_AW 12
+
+`define RP_DDS_WAVE_SINE     3'd0
+`define RP_DDS_WAVE_SQUARE   3'd1
+`define RP_DDS_WAVE_TRIANGLE 3'd2
+`define RP_DDS_WAVE_SAW      3'd3
+`define RP_DDS_WAVE_ARB      3'd4
+
+`define RP_DDS_REG_ID                 20'h00000
+`define RP_DDS_REG_VERSION            20'h00004 // Increment 32 bits
+`define RP_DDS_REG_CONTROL            20'h00008
+`define RP_DDS_REG_STATUS             20'h0000C
+`define RP_DDS_REG_SAMPLE_RATE        20'h00010
+`define RP_DDS_REG_LUT_LENGTH         20'h00014
+`define RP_DDS_REG_FEATURES           20'h00018
+`define RP_DDS_REG_DMA_CONTROL        20'h0001C
+`define RP_DDS_REG_DMA_TARGET         20'h00020
+`define RP_DDS_REG_DMA_EXPECTED_WORDS 20'h00024
+`define RP_DDS_REG_DMA_RECEIVED_WORDS 20'h00028
+`define RP_DDS_REG_DMA_ERROR_CODE     20'h0002C
+
+`define RP_DDS_REG_CHA_CTRL     20'h00100
+`define RP_DDS_REG_CHA_FTW_LO   20'h00104
+`define RP_DDS_REG_CHA_FTW_HI   20'h00108
+`define RP_DDS_REG_CHA_PHASE_LO 20'h0010C
+`define RP_DDS_REG_CHA_PHASE_HI 20'h00110
+`define RP_DDS_REG_CHA_AMP      20'h00114
+`define RP_DDS_REG_CHA_DC       20'h00118
+`define RP_DDS_REG_CHA_ARB_BANK 20'h0011C
+
+`define RP_DDS_REG_CHB_CTRL     20'h00200
+`define RP_DDS_REG_CHB_FTW_LO   20'h00204
+`define RP_DDS_REG_CHB_FTW_HI   20'h00208
+`define RP_DDS_REG_CHB_PHASE_LO 20'h0020C
+`define RP_DDS_REG_CHB_PHASE_HI 20'h00210
+`define RP_DDS_REG_CHB_AMP      20'h00214
+`define RP_DDS_REG_CHB_DC       20'h00218
+`define RP_DDS_REG_CHB_ARB_BANK 20'h0021C
+
+`define RP_DDS_LUTA_BANK0_BASE 20'h10000
+`define RP_DDS_LUTA_BANK1_BASE 20'h20000
+`define RP_DDS_LUTB_BANK0_BASE 20'h30000
+`define RP_DDS_LUTB_BANK1_BASE 20'h40000
+
+`define RP_DDS_DMA_ERR_NONE          32'd0
+`define RP_DDS_DMA_ERR_EXPECT_ZERO   32'd1
+`define RP_DDS_DMA_ERR_EARLY_TLAST   32'd2
+`define RP_DDS_DMA_ERR_MISSING_TLAST 32'd3
+`define RP_DDS_DMA_ERR_OVERRUN       32'd4
+`define RP_DDS_DMA_ERR_ABORT         32'd5
+
+`endif

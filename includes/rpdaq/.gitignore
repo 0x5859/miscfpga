@@ -1,0 +1,132 @@
+# --- captured data + converted exports (project-specific) ---
+runs/
+*.bin
+*.bin.log.txt
+*.bin.log.lost.txt
+*.csv
+*.csv.gz
+*.tar.gz
+
+# --- AI / editor tooling caches ---
+.claude/
+.codex/
+.cursor/
+.aider*
+.continue/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Virtual environments / build outputs ---
+.venv/
+venv/
+env/
+build/
+dist/
+*.whl
+
+# --- LaTeX build artifacts ---
+*.aux
+*.log
+*.out
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+*.pdf
+
+# --- Images (raster + vector) ---
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.webp
+*.heic
+*.heif
+*.ico
+*.svg
+*.eps
+*.ps
+*.ai
+*.emf
+*.wmf
+
+# --- Office documents ---
+*.doc
+*.docx
+*.dot
+*.dotx
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+*.xlt
+*.xltx
+*.ppt
+*.pptx
+*.pps
+*.ppsx
+*.pot
+*.potx
+*.odt
+*.ods
+*.odp
+*.rtf
+~$*
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# --- Linux ---
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# --- Windows ---
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Published report PDFs: keep these despite the *.pdf rule above ---
+!docs/RIN_report.pdf
+!docs/validation_report.pdf

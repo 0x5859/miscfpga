@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# iverilog / simulation artifacts
+sim_top
+sim_top_rebuilt
+tb_*_sim
+*.vcd
+*.fst
+*.fsdb
+
+# Vivado
+.Xil/
+vivado*.jou
+vivado*.log
+*.wdb
+*.dcp
+*.backup.jou
+*.backup.log
+
+# bootgen intermediates
+*.bin.prm.new
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Tarballs / deploy staging
+*.tar.gz
+/tmp/
+
+# Secrets (don't accidentally commit board hostkeys or credentials)
+*.hostkey
+known_hosts

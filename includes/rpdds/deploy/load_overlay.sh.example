@@ -1,0 +1,128 @@
+#!/bin/bash
+# Robust Red Pitaya overlay loader for the DDS AXI DMA project.
+#
+# Background: on z20_125, `/opt/redpitaya/sbin/overlay.sh` can silently
+# skip re-programming the PL when a Full overlay already exists in
+# configfs (fpga_manager treats it as cached and only takes ~5 ms instead
+# of the ~73 ms a genuine program takes). That leaves the previous
+# bitstream running even though overlay.sh prints "loaded successfully".
+#
+# Strategy:
+#   1. Remove any stale Full overlay so fpga_manager cannot cache-hit.
+#   2. Invoke overlay.sh and verify the DDS ID register actually reads
+#      0x44445332 ("DDS2" magic at 0x40200000).
+#   3. If verify fails, fall back to a direct `fpgautil -b` and reapply
+#      the dtbo via configfs so the reserved-memory node is honored.
+#   4. Exit non-zero if the PL is still not programmed correctly.
+
+set -euo pipefail
+
+APP_NAME="${APP_NAME:-dds_axi_dma_workbench}"
+MODEL="$("/opt/redpitaya/bin/monitor" -f)"
+PROJECT_ROOT="/opt/redpitaya/fpga/${MODEL}/${APP_NAME}"
+CONFIGFS_FULL="/sys/kernel/config/device-tree/overlays/Full"
+
+MONITOR="/opt/redpitaya/bin/monitor"
+FPGAUTIL="/opt/redpitaya/bin/fpgautil"
+OVERLAY_SH="/opt/redpitaya/sbin/overlay.sh"
+
+ID_ADDR="0x40200000"
+EXPECTED_ID="0x44445332"
+
+BIT_PATH="${PROJECT_ROOT}/fpga.bit.bin"
+DTBO_PATH="${PROJECT_ROOT}/fpga.dtbo"
+
+log() { printf '[load_overlay] %s\n' "$*"; }
+
+clear_full_overlay() {
+    if [ -d "${CONFIGFS_FULL}" ]; then
+        rmdir "${CONFIGFS_FULL}" 2>/dev/null || true
+        sync
+        sleep 0.3
+    fi
+}
+
+read_id() {
+    local raw
+    raw="$("${MONITOR}" "${ID_ADDR}" 2>/dev/null | tr -d '[:space:]' || true)"
+    printf '%s' "${raw,,}"
+}
+
+verify_dds_id() {
+    local got expected
+    got="$(read_id)"
+    expected="${EXPECTED_ID,,}"
+    if [ "${got}" = "${expected}" ]; then
+        log "  DDS ID @ ${ID_ADDR} = ${got} (OK)"
+        return 0
+    fi
+    log "  DDS ID @ ${ID_ADDR} = ${got:-<empty>} (expected ${expected})"
+    return 1
+}
+
+apply_dtbo_via_configfs() {
+    if [ ! -d "${CONFIGFS_FULL}" ]; then
+        mkdir "${CONFIGFS_FULL}"
+    fi
+    cat "${DTBO_PATH}" > "${CONFIGFS_FULL}/dtbo"
+    sync
+    sleep 0.3
+}
+
+try_overlay_sh() {
+    log "Primary path: overlay.sh ${APP_NAME}"
+    clear_full_overlay
+    if ! "${OVERLAY_SH}" "${APP_NAME}"; then
+        log "  overlay.sh exited non-zero"
+        return 1
+    fi
+    verify_dds_id
+}
+
+try_fpgautil_fallback() {
+    log "Fallback path: fpgautil -b + manual dtbo"
+    clear_full_overlay
+    "${FPGAUTIL}" -b "${BIT_PATH}"
+    apply_dtbo_via_configfs
+    verify_dds_id
+}
+
+log "Target: ${APP_NAME} (model=${MODEL})"
+log "Project root: ${PROJECT_ROOT}"
+
+if [ ! -f "${BIT_PATH}" ]; then
+    log "ERROR: bitstream not found: ${BIT_PATH}" >&2
+    exit 1
+fi
+if [ ! -f "${DTBO_PATH}" ]; then
+    log "ERROR: device-tree overlay not found: ${DTBO_PATH}" >&2
+    exit 1
+fi
+
+if try_overlay_sh; then
+    log "Overlay applied via overlay.sh"
+    printf '%s\n' "${APP_NAME}" > /tmp/loaded_fpga.inf
+    exit 0
+fi
+
+log "Primary path did not leave the DDS running; attempting fallback..."
+
+if try_fpgautil_fallback; then
+    log "Overlay applied via fpgautil fallback"
+    printf '%s\n' "${APP_NAME}" > /tmp/loaded_fpga.inf
+    exit 0
+fi
+
+log "ERROR: DDS ID mismatch after both paths; PL is not programmed correctly." >&2
+log "---- diagnostics ----" >&2
+if [ -r /sys/class/fpga_manager/fpga0/state ]; then
+    log "fpga_manager state: $(cat /sys/class/fpga_manager/fpga0/state)" >&2
+fi
+if [ -d /sys/kernel/config/device-tree/overlays ]; then
+    log "configfs overlays: $(ls /sys/kernel/config/device-tree/overlays/ 2>/dev/null | tr '\n' ' ')" >&2
+fi
+if [ -r /tmp/update_fpga.txt ]; then
+    log "last fpgautil log (tail):" >&2
+    tail -n 10 /tmp/update_fpga.txt >&2 || true
+fi
+exit 1

@@ -1,0 +1,14 @@
+#!/bin/bash
+# Manual launch helper: program the DDS bitstream and (re)start the
+# backend service. Run this whenever you want the DDS core ready for
+# use - typically right after SSH'ing in on a fresh boot. DDS is NOT
+# loaded automatically at boot (boot-time overlay units correlated with
+# board instability; see docs/RED_PITAYA_INSTALL_AND_POSTMORTEM.md).
+set -euo pipefail
+
+APP_NAME="${APP_NAME:-dds_axi_dma_workbench}"
+MODEL="$("/opt/redpitaya/bin/monitor" -f)"
+PROJECT_ROOT="/opt/redpitaya/fpga/${MODEL}/${APP_NAME}"
+
+"${PROJECT_ROOT}/load_overlay.sh"
+systemctl restart rp-dds-axi-dma.service

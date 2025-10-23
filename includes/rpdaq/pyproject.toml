@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redpitaya-rin-stream"
+version = "0.2.0"
+description = "Dual-channel Red Pitaya STEMlab 125-14 ADC streaming via the official rpsa_client + PC-side decoders for RIN measurements"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{name = "Generated project"}]
+license = {text = "MIT"}
+dependencies = [
+    "numpy>=1.23"
+]
+
+[project.scripts]
+rp-rin-bin-to-csv = "rp_rin_stream.convert:main"
+rp-rin-bin-to-volts = "rp_rin_stream.bin_to_volts_csv:main"
+rp-rin-write-metadata = "rp_rin_stream.metadata:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100

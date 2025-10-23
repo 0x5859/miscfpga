@@ -1,0 +1,7 @@
+# Core dependency used by the acquisition and conversion tools.
+numpy>=1.23
+
+# Red Pitaya's official rp_stream / streaming Python module is not normally
+# installed from PyPI. Download the "command line streaming client" from the
+# Data Stream Control application on the Red Pitaya and add its Python library
+# directory to PYTHONPATH, or install it according to the client package notes.
